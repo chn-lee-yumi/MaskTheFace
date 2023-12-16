@@ -2,19 +2,21 @@
 # Created: 27 April,2020, 10:21 PM
 # Email: aqeel.anwar@gatech.edu
 
-from configparser import ConfigParser
-import cv2, math, os
-from PIL import Image, ImageDraw
-from tqdm import tqdm
-from utils.read_cfg import read_cfg
-from utils.fit_ellipse import *
+import bz2
+import math
+import os
 import random
-from utils.create_mask import texture_the_mask, color_the_mask
-from imutils import face_utils
+import shutil
+from configparser import ConfigParser
+
+import cv2
 import requests
-from zipfile import ZipFile
+from PIL import Image, ImageDraw
+from imutils import face_utils
 from tqdm import tqdm
-import bz2, shutil
+from utils.create_mask import texture_the_mask, color_the_mask
+from utils.fit_ellipse import *
+from utils.read_cfg import read_cfg
 
 
 def download_dlib_model():
@@ -24,7 +26,7 @@ def download_dlib_model():
     with requests.get(dlib_model_link, stream=True) as r:
         print("Zip file size: ", np.round(len(r.content) / 1024 / 1024, 2), "MB")
         destination = (
-            "dlib_models" + os.path.sep + "shape_predictor_68_face_landmarks.dat.bz2"
+                "dlib_models" + os.path.sep + "shape_predictor_68_face_landmarks.dat.bz2"
         )
         if not os.path.exists(destination.rsplit(os.path.sep, 1)[0]):
             os.mkdir(destination.rsplit(os.path.sep, 1)[0])
@@ -34,7 +36,7 @@ def download_dlib_model():
                 fd.write(chunk)
     print("Extracting dlib model...")
     with bz2.BZ2File(destination) as fr, open(
-        "dlib_models/shape_predictor_68_face_landmarks.dat", "wb"
+            "dlib_models/shape_predictor_68_face_landmarks.dat", "wb"
     ) as fw:
         shutil.copyfileobj(fr, fw)
     print("Saved: ", destination)
@@ -59,7 +61,7 @@ def get_line(face_landmark, image, type="eye", debug=False):
 
     elif type == "nose_mid":
         nose_length = (
-            face_landmark["nose_bridge"][-1][1] - face_landmark["nose_bridge"][0][1]
+                face_landmark["nose_bridge"][-1][1] - face_landmark["nose_bridge"][0][1]
         )
         left_point = [left_eye_mid[0], left_eye_mid[1] + nose_length / 2]
         right_point = [right_eye_mid[0], right_eye_mid[1] + nose_length / 2]
@@ -68,22 +70,22 @@ def get_line(face_landmark, image, type="eye", debug=False):
         # ) / 2
 
         mid_pointY = (
-            face_landmark["nose_bridge"][-1][1] + face_landmark["nose_bridge"][0][1]
-        ) / 2
+                             face_landmark["nose_bridge"][-1][1] + face_landmark["nose_bridge"][0][1]
+                     ) / 2
         mid_pointX = (
-            face_landmark["nose_bridge"][-1][0] + face_landmark["nose_bridge"][0][0]
-        ) / 2
+                             face_landmark["nose_bridge"][-1][0] + face_landmark["nose_bridge"][0][0]
+                     ) / 2
         mid_point = (mid_pointX, mid_pointY)
 
     elif type == "nose_tip":
         nose_length = (
-            face_landmark["nose_bridge"][-1][1] - face_landmark["nose_bridge"][0][1]
+                face_landmark["nose_bridge"][-1][1] - face_landmark["nose_bridge"][0][1]
         )
         left_point = [left_eye_mid[0], left_eye_mid[1] + nose_length]
         right_point = [right_eye_mid[0], right_eye_mid[1] + nose_length]
         mid_point = (
-            face_landmark["nose_bridge"][-1][1] + face_landmark["nose_bridge"][0][1]
-        ) / 2
+                            face_landmark["nose_bridge"][-1][1] + face_landmark["nose_bridge"][0][1]
+                    ) / 2
 
     elif type == "bottom_lip":
         bottom_lip = face_landmark["bottom_lip"]
@@ -187,8 +189,8 @@ def line_intersection(line1, line2):
     segment_maxY = max(line2[0][1], line2[1][1])
 
     if (
-        segment_maxX + 1 >= x >= segment_minX - 1
-        and segment_maxY + 1 >= y >= segment_minY - 1
+            segment_maxX + 1 >= x >= segment_minX - 1
+            and segment_maxY + 1 >= y >= segment_minY - 1
     ):
         flag = True
 
@@ -335,10 +337,10 @@ def mask_face(image, face_location, six_points, angle, args, type="surgical"):
     face_height = face_location[2] - face_location[0]
     face_width = face_location[1] - face_location[3]
     image_face = image[
-        face_location[0] + int(face_height / 2) : face_location[2],
-        face_location[3] : face_location[1],
-        :,
-    ]
+                 face_location[0] + int(face_height / 2): face_location[2],
+                 face_location[3]: face_location[1],
+                 :,
+                 ]
 
     image_face = image
 
@@ -574,65 +576,82 @@ def mask_image(image_path, args):
     original_image = image.copy()
     # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = image
-    face_locations = args.detector(gray, 1)
-    mask_type = args.mask_type
-    verbose = args.verbose
-    if args.code:
-        ind = random.randint(0, len(args.code_count) - 1)
-        mask_dict = args.mask_dict_of_dict[ind]
-        mask_type = mask_dict["type"]
-        args.color = mask_dict["color"]
-        args.pattern = mask_dict["texture"]
-        args.code_count[ind] += 1
-
-    elif mask_type == "random":
-        available_mask_types = get_available_mask_types()
-        mask_type = random.choice(available_mask_types)
-
-    if verbose:
-        tqdm.write("Faces found: {:2d}".format(len(face_locations)))
-    # Process each face in the image
+    # face_locations = args.detector(gray, 1)
+    # The threshold is modified here to handle low-resolution images.
     masked_images = []
     mask_binary_array = []
     mask = []
-    for (i, face_location) in enumerate(face_locations):
-        shape = args.predictor(gray, face_location)
-        shape = face_utils.shape_to_np(shape)
-        face_landmarks = shape_to_landmarks(shape)
-        face_location = rect_to_bb(face_location)
-        # draw_landmarks(face_landmarks, image)
-        six_points_on_face, angle = get_six_points(face_landmarks, image)
-        mask = []
-        if mask_type != "all":
-            if len(masked_images) > 0:
-                image = masked_images.pop(0)
-            image, mask_binary = mask_face(
-                image, face_location, six_points_on_face, angle, args, type=mask_type
-            )
+    # threshold_list = [(1, 0.5), (1, 0.3), (1, 0.1), (1, -0.1), (1, -0.3), (1, -0.5), (1, -0.7), (2, -0.7)]
+    # threshold_list = [(1, 0.5), (1, 0.3), (1, 0.1), (1, -0.1), (1, -0.3), (1, -0.5)]
+    threshold_list = [(1, 0.5), (1, 0.3), (1, 0.1)]
+    threshold_index = 0
+    while threshold_index < len(threshold_list):
+        up, threshold = threshold_list[threshold_index]
+        face_locations, scores, idx = args.detector.run(gray, up, threshold)
+        if len(face_locations) != 1:
+            threshold_index += 1
+            continue
 
-            # compress to face tight
-            face_height = face_location[2] - face_location[0]
-            face_width = face_location[1] - face_location[3]
-            masked_images.append(image)
-            mask_binary_array.append(mask_binary)
-            mask.append(mask_type)
-        else:
+        mask_type = args.mask_type
+        verbose = args.verbose
+        if args.code:
+            ind = random.randint(0, len(args.code_count) - 1)
+            mask_dict = args.mask_dict_of_dict[ind]
+            mask_type = mask_dict["type"]
+            args.color = mask_dict["color"]
+            args.pattern = mask_dict["texture"]
+            args.code_count[ind] += 1
+
+        elif mask_type == "random":
             available_mask_types = get_available_mask_types()
-            for m in range(len(available_mask_types)):
-                if len(masked_images) == len(available_mask_types):
-                    image = masked_images.pop(m)
-                img, mask_binary = mask_face(
-                    image,
-                    face_location,
-                    six_points_on_face,
-                    angle,
-                    args,
-                    type=available_mask_types[m],
+            mask_type = random.choice(available_mask_types)
+
+        if verbose:
+            tqdm.write("Faces found: {:2d}".format(len(face_locations)))
+        # Process each face in the image
+        masked_images = []
+        mask_binary_array = []
+        mask = []
+        for (i, face_location) in enumerate(face_locations):
+            shape = args.predictor(gray, face_location)
+            shape = face_utils.shape_to_np(shape)
+            face_landmarks = shape_to_landmarks(shape)
+            face_location = rect_to_bb(face_location)
+            # draw_landmarks(face_landmarks, image)
+            six_points_on_face, angle = get_six_points(face_landmarks, image)
+            mask = []
+            if mask_type != "all":
+                if len(masked_images) > 0:
+                    image = masked_images.pop(0)
+                image, mask_binary = mask_face(
+                    image, face_location, six_points_on_face, angle, args, type=mask_type
                 )
-                masked_images.insert(m, img)
-                mask_binary_array.insert(m, mask_binary)
-            mask = available_mask_types
-            cc = 1
+
+                # compress to face tight
+                face_height = face_location[2] - face_location[0]
+                face_width = face_location[1] - face_location[3]
+                masked_images.append(image)
+                mask_binary_array.append(mask_binary)
+                mask.append(mask_type)
+            else:
+                available_mask_types = get_available_mask_types()
+                for m in range(len(available_mask_types)):
+                    if len(masked_images) == len(available_mask_types):
+                        image = masked_images.pop(m)
+                    img, mask_binary = mask_face(
+                        image,
+                        face_location,
+                        six_points_on_face,
+                        angle,
+                        args,
+                        type=available_mask_types[m],
+                    )
+                    masked_images.insert(m, img)
+                    mask_binary_array.insert(m, mask_binary)
+                mask = available_mask_types
+                cc = 1
+
+        break
 
     return masked_images, mask, mask_binary_array, original_image
 
@@ -643,12 +662,12 @@ def is_image(path):
         image_extensions = ["png", "PNG", "jpg", "JPG"]
 
         if extensions[1:] in image_extensions:
-            return True 
+            return True
         else:
             print("Please input image file. png / jpg")
-            return False 
-    except: 
-        return False 
+            return False
+    except:
+        return False
 
 
 def get_available_mask_types(config_filename="masks/masks.cfg"):
