@@ -1,9 +1,9 @@
 certifi
 click
-dlib==19.19.0
+dlib
 dotmap
-face-recognition==1.3.0
-face-recognition-models==0.3.0
+face-recognition
+face-recognition-models
 numpy
 opencv-python
 Pillow
